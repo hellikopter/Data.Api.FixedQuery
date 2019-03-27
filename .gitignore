@@ -3,5 +3,8 @@
 packages
 bin
 obj
-Secrets.config
 *.csproj.user
+.idea/*
+Properties/PublishProfiles
+Parliament.Data.Api.FixedQuery.userprefs
+/Parliament.Data.Api.FixedQuery/Properties/PublishProfiles

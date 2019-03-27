@@ -1,0 +1,142 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "fixedQueryName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the API app."
+      }
+    },
+    "applicationPlanName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the Application Insights."
+      }
+    },
+    "operationsResourceGroupName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the Resource Group where backup storage is."
+      }
+    },
+    "applicationInsightsName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the Application Insights."
+      }
+    },
+    "apiManagementIP": {
+      "type": "string",
+      "metadata": {
+        "description": "IP address of the API Management."
+      }
+    },
+    "contentfulDeliveryApiKey": {
+      "type": "string",
+      "metadata": {
+        "description": "API key for Contentful CMS."
+      }
+    },
+    "contentfulSpaceId": {
+      "type": "string",
+      "metadata": {
+        "description": "Space Id for Contentful CMS."
+      }
+    },
+    "releaseId": {
+      "type": "int",
+      "metadata": {
+        "description": "The identifier of the current release record."
+      }
+    }
+  },
+  "variables": {},
+  "resources": [
+    {
+      "comments": "App plan",
+      "type": "Microsoft.Web/serverfarms",
+      "sku": {
+        "name": "B1",
+        "tier": "Basic",
+        "size": "B1",
+        "family": "B",
+        "capacity": 1
+      },
+      "kind": "app",
+      "name": "[parameters('applicationPlanName')]",
+      "apiVersion": "2016-09-01",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "ReleaseId": "[parameters('releaseId')]"
+      },
+      "dependsOn": []
+    },
+    {
+      "comments": "Web API app",
+      "type": "Microsoft.Web/sites",
+      "kind": "api",
+      "name": "[parameters('fixedQueryName')]",
+      "apiVersion": "2016-08-01",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "ReleaseId": "[parameters('releaseId')]"
+      },
+      "properties": {
+        "siteConfig": {
+          "ipSecurityRestrictions": [
+            {
+              "ipAddress": "[parameters('apiManagementIP')]"
+            }
+          ]
+        },
+        "name": "[parameters('fixedQueryName')]",
+        "hostNames": [
+          "[concat(parameters('fixedQueryName'),'.azurewebsites.net')]"
+        ],
+        "enabledHostNames": [
+          "[concat(parameters('fixedQueryName'),'.azurewebsites.net')]",
+          "[concat(parameters('fixedQueryName'),'.scm.azurewebsites.net')]"
+        ],
+        "hostNameSslStates": [
+          {
+            "name": "[concat(parameters('fixedQueryName'),'.azurewebsites.net')]",
+            "sslState": 0,
+            "thumbprint": null,
+            "ipBasedSslState": 0
+          },
+          {
+            "name": "[concat(parameters('fixedQueryName'),'.scm.azurewebsites.net')]",
+            "sslState": 0,
+            "thumbprint": null,
+            "ipBasedSslState": 0
+          }
+        ],
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('applicationPlanName'))]"
+      },
+      "resources": [
+        {
+          "comments": "Application settings to be used by the App",
+          "apiVersion": "2015-08-01",
+          "name": "appsettings",
+          "type": "config",
+          "dependsOn": [
+            "[resourceId('Microsoft.Web/sites', parameters('fixedQueryName'))]"
+          ],
+          "properties": {
+            "WEBSITE_NODE_DEFAULT_VERSION": "6.9.1",
+            "ApplicationInsightsInstrumentationKey": "[reference(resourceId(subscription().subscriptionId,parameters('operationsResourceGroupName'),'Microsoft.Insights/Components',parameters('applicationInsightsName')),'2014-04-01').InstrumentationKey]",
+            "SparqlEndpoint": "https://api.parliament.uk/sparql",
+            "SubscriptionKey": "",
+            "ApiVersion": "",
+            "ContentfulDeliveryApiKey": "[parameters('contentfulDeliveryApiKey')]",
+            "ContentfulSpaceId": "[parameters('contentfulSpaceId')]"
+          }
+        }
+      ],
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/serverfarms', parameters('applicationPlanName'))]"
+      ]
+    }
+  ]
+}

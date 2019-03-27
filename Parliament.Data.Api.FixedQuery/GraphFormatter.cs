@@ -1,36 +1,59 @@
-﻿namespace Parliament.Data.Api.FixedQuery
+﻿// MIT License
+//
+// Copyright (c) 2019 UK Parliament
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+namespace Parliament.Data.Api.FixedQuery
 {
+    using Microsoft.ApplicationInsights;
+    using Microsoft.ApplicationInsights.DataContracts;
+    using Microsoft.ApplicationInsights.Extensibility;
     using System;
-    using System.Collections.Generic;
     using System.IO;
-    using System.Net;
+    using System.Linq;
     using System.Net.Http;
     using System.Net.Http.Formatting;
-    using System.Threading.Tasks;
-    using System.Web.Http;
+    using System.Text;
     using VDS.RDF;
+    using VDS.RDF.Query;
     using VDS.RDF.Writing;
 
-    public class GraphFormatter : MediaTypeFormatter
+    public class GraphFormatter : BufferedMediaTypeFormatter
     {
-        private static readonly Dictionary<string, string> mediaTypes = new Dictionary<string, string> {
-            { "csv", "text/csv" },
-            { "graphviz", "text/vnd.graphviz" },
-            { "html", "text/html" },
-            { "n3", "text/n3" },
-            { "ntriples", "application/n-triples" },
-            { "rdfxml", "application/rdf+xml" },
-            { "rdfjson", "application/rdf+json" },
-            { "tsv", "text/tab-separated-values" },
-            { "turtle", "text/turtle" }
-        };
+        private MimeMapping definition;
 
-        public GraphFormatter() : base()
+        private MimeMapping Definition
         {
-            foreach (var mediaType in GraphFormatter.mediaTypes.Values)
+            get
             {
-                this.MediaTypeMappings.Add(new RequestHeaderMapping("Accept", mediaType, StringComparison.Ordinal, false, mediaType));
+                var mapping = this.MediaTypeMappings.Single();
+                if (mapping is UriPathExtensionMapping extensionMapping)
+                {
+                    this.definition = Global.MimeTypeDefinitions.Single(x => x.Extensions.Contains(extensionMapping.UriPathExtension));
+                }
+                else
+                {
+                    this.definition = Global.MimeTypeDefinitions.Single(x => x.MimeTypes.Contains(mapping.MediaType.MediaType));
+                }
+
+                return this.definition;
             }
+        }
+
+        public GraphFormatter(MediaTypeMapping mapping)
+        {
+            if (mapping == null)
+            {
+                throw new ArgumentNullException("mapping");
+            }
+
+            this.SupportedMediaTypes.Add(mapping.MediaType);
+            this.MediaTypeMappings.Add(mapping);
         }
 
         public override bool CanReadType(Type type)
@@ -40,72 +63,60 @@
 
         public override bool CanWriteType(Type type)
         {
-            return typeof(Graph).IsAssignableFrom(type);
+            return (this.Definition.CanWriteRdf || this.Definition.CanWriteStore) && typeof(IGraph).IsAssignableFrom(type)
+                || this.Definition.CanWriteSparql && typeof(SparqlResultSet).IsAssignableFrom(type);
         }
 
-        public override Task WriteToStreamAsync(Type type, object value, Stream writeStream, HttpContent content, TransportContext transportContext)
+        public override void WriteToStream(Type type, object value, Stream writeStream, HttpContent content)
         {
-            var writer = GetWriter(content.Headers.ContentType.MediaType);
+            var streamWriter = new StreamWriter(writeStream, new UTF8Encoding());
 
-            return Task.Factory.StartNew(() =>
+            if (value is IGraph graph)
             {
-                using (var sw = new StreamWriter(writeStream))
+                if (this.Definition.CanWriteStore)
                 {
-                    (value as Graph).SaveToStream(sw, writer);
+                    var store = new TripleStore();
+                    store.Add(graph);
+
+                    this.Definition.StoreWriter().Save(store, streamWriter);
                 }
-            });
+                else
+                {
+                    var writer = this.Definition.RdfWriter();
+
+                    if (writer is HtmlWriter htmlWriter)
+                    {
+                        //htmlWriter.UriPrefix = "resource?stay&uri=";
+                    }
+
+                    writer.Save(graph, streamWriter);
+                }
+            }
+            else if (this.Definition.CanWriteSparql)
+            {
+                var writer = this.Definition.SparqlWriter();
+                if (writer is SparqlHtmlWriter htmlWriter)
+                {
+                    htmlWriter.UriPrefix = "resource?uri=";
+                }
+
+                writer.Save(value as SparqlResultSet, streamWriter);
+            }
+
+            streamWriter.Close();
+
+            GraphFormatter.TrackWriteEvent(this.SupportedMediaTypes.Single().MediaType);
         }
 
-        private static IRdfWriter GetWriter(string mediaType)
+        private static void TrackWriteEvent(string format)
         {
-            if (mediaType == GraphFormatter.mediaTypes["csv"])
-            {
-                return new CsvWriter();
-            }
+            var telemetry = new EventTelemetry("Write");
+            telemetry.Properties.Add("format", format);
 
-            if (mediaType == GraphFormatter.mediaTypes["graphviz"])
-            {
-                return new GraphVizWriter();
-            }
+            // This makes the event part of the overall request context.
+            new OperationCorrelationTelemetryInitializer().Initialize(telemetry);
 
-            if (mediaType == GraphFormatter.mediaTypes["html"])
-            {
-                return new HtmlWriter() {
-                    UriPrefix = GlobalConfiguration.Configuration.VirtualPathRoot + "resources?uri="
-                };
-            }
-
-            if (mediaType == GraphFormatter.mediaTypes["n3"])
-            {
-                return new Notation3Writer();
-            }
-
-            if (mediaType == GraphFormatter.mediaTypes["ntriples"])
-            {
-                return new NTriplesWriter();
-            }
-
-            if (mediaType == GraphFormatter.mediaTypes["rdfxml"])
-            {
-                return new RdfXmlWriter() { UseDtd = false };
-            }
-
-            if (mediaType == GraphFormatter.mediaTypes["rdfjson"])
-            {
-                return new RdfJsonWriter();
-            }
-
-            if (mediaType == GraphFormatter.mediaTypes["tsv"])
-            {
-                return new TsvWriter();
-            }
-
-            if (mediaType == GraphFormatter.mediaTypes["turtle"])
-            {
-                return new CompressingTurtleWriter();
-            }
-
-            throw new NotSupportedException();
+            new TelemetryClient().TrackEvent(telemetry);
         }
     }
 }

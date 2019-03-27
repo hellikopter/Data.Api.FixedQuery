@@ -1,0 +1,63 @@
+PREFIX : @schemaUri
+
+CONSTRUCT {
+
+  ?laying
+    a :Laying ;
+    :layingDate ?layingDate ;
+    :layingHasLaidThing ?laidThing ;
+    :layingHasLayingBody ?layingBody ;
+    :businessItemHasProcedureStep ?procedureStep ;
+    :businessItemHasBusinessItemWebLink ?businessItemWebLink .
+
+  ?laidThing
+    a :LaidThing, ?laidThingType ;
+    :laidThingName ?laidThingName ;
+    :workPackagedThingHasWorkPackage ?workPackage .
+
+  ?workPackage
+    a :WorkPackage ;
+    :workPackageName ?workPackageName ;
+    :workPackageHasProcedure ?procedure .
+
+  ?procedure
+    a :Procedure ;
+    :procedureName ?procedureName .
+
+  ?layingBody
+    a :LayingBody, :Group ;
+    :groupName ?groupName .
+
+  ?procedureStep
+    a :ProcedureStep ;
+    :procedureStepName ?procedureStepName .
+
+}
+WHERE {
+	BIND (@laid_paper_id as ?laying)
+
+  ?laying a :Laying .
+ 	OPTIONAL { ?laying :layingDate ?layingDate . }
+  OPTIONAL {
+    ?laying :layingHasLaidThing ?laidThing .
+    ?laidThing a ?laidThingType.
+    ?laidThing :laidThingName ?laidThingName .
+
+    OPTIONAL {
+      ?laidThing :workPackagedThingHasWorkPackage ?workPackage .
+     	OPTIONAL {
+        ?workPackage :workPackageHasProcedure ?procedure .
+				?procedure :procedureName ?procedureName .
+      }
+    }
+	}
+  OPTIONAL {
+    ?laying :layingHasLayingBody ?layingBody .
+    ?layingBody :groupName ?groupName .
+  }
+  OPTIONAL {
+    ?laying :businessItemHasProcedureStep ?procedureStep .
+    ?procedureStep :procedureStepName ?procedureStepName .
+  }
+  OPTIONAL { ?laying :businessItemHasBusinessItemWebLink ?businessItemWebLink . }
+}

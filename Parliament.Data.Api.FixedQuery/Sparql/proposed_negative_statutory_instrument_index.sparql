@@ -1,0 +1,41 @@
+PREFIX : @schemaUri
+
+CONSTRUCT {
+	?proposedNegativeStatutoryInstrumentPaper
+		a :ProposedNegativeStatutoryInstrumentPaper, :LaidThing, :WorkPackagedThing ;
+		:laidThingName ?laidThingName ;
+		:laidThingHasLaying ?laying ;
+    	:workPackagedThingHasWorkPackage ?workPackage .
+	?laying
+		a :Laying ;
+		:layingDate ?layingDate ;
+    	:layingHasLayingBody ?layingBody .
+    ?layingBody
+    	a :Group ;
+    	:groupName ?groupName .
+  	?workPackage
+    	a :WorkPackage ;
+    	:workPackageHasProcedure ?procedure .
+  	?procedure
+    	a :Procedure ;
+    	:procedureName ?procedureName .
+}
+WHERE {
+    ?proposedNegativeStatutoryInstrumentPaper a :ProposedNegativeStatutoryInstrumentPaper .
+	OPTIONAL { ?proposedNegativeStatutoryInstrumentPaper :laidThingName ?laidThingName . }
+	OPTIONAL {
+		?proposedNegativeStatutoryInstrumentPaper :laidThingHasLaying ?laying .
+		OPTIONAL { ?laying :layingDate ?layingDate . }
+        OPTIONAL {
+          ?laying :layingHasLayingBody ?layingBody .
+          OPTIONAL { ?layingBody :groupName ?groupName . }
+        }
+	}
+  	  OPTIONAL {
+    	?proposedNegativeStatutoryInstrumentPaper :workPackagedThingHasWorkPackage ?workPackage .
+    	OPTIONAL {
+      		?workPackage :workPackageHasProcedure ?procedure .
+      		OPTIONAL { ?procedure :procedureName ?procedureName . }
+    	}
+  	}
+}
